@@ -1,0 +1,21 @@
+[package]
+name = "soroban-registry-cli"
+version.workspace = true
+edition.workspace = true
+authors.workspace = true
+license.workspace = true
+
+[[bin]]
+name = "soroban-registry"
+path = "src/main.rs"
+
+[dependencies]
+shared = { path = "../backend/shared" }
+
+clap = { workspace = true }
+tokio = { workspace = true }
+reqwest = { workspace = true }
+serde = { workspace = true }
+serde_json = { workspace = true }
+anyhow = { workspace = true }
+colored = "2.1"
