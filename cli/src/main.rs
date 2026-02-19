@@ -1,4 +1,5 @@
 mod commands;
+mod wizard;
 
 use anyhow::Result;
 use clap::{Parser, Subcommand};
@@ -78,6 +79,20 @@ enum Commands {
         #[arg(long)]
         network: Option<String>,
     },
+
+    /// Launch interactive contract deployment wizard
+    Wizard {},
+
+    /// Show deployment history
+    History {
+        /// Search term to filter history
+        #[arg(long)]
+        search: Option<String>,
+
+        /// Max items to display
+        #[arg(long, default_value = "50")]
+        limit: usize,
+    },
 }
 
 #[tokio::main]
@@ -118,6 +133,12 @@ async fn main() -> Result<()> {
         }
         Commands::List { limit, network } => {
             commands::list(&cli.api_url, limit, network.as_deref()).await?;
+        }
+        Commands::Wizard {} => {
+            wizard::run(&cli.api_url).await?;
+        }
+        Commands::History { search, limit } => {
+            wizard::show_history(search.as_deref(), limit)?;
         }
     }
 
