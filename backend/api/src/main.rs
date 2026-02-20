@@ -48,6 +48,8 @@ mod trust;
 mod health_monitor;
 mod migration_cli;
 mod validation;
+mod formal_verification_handlers;
+mod formal_verification_routes;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
@@ -848,6 +850,7 @@ async fn main() -> Result<()> {
         .merge(contract_history_routes::contract_history_routes())
         .merge(template_routes::template_routes())
         .merge(scan_routes::scan_routes())
+        .merge(formal_verification_routes::formal_verification_routes())
         .route("/metrics", get(observability::metrics_handler))
         .merge(routes::observability_routes())
         .merge(residency_routes::residency_routes())

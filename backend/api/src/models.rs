@@ -427,3 +427,63 @@ pub struct NetworkCriteria {
     pub cost_multiplier: f32, 
     pub latency_ms: u32,
 }
+
+// ─────────────────────────────────────────────────────────
+// Formal Verification Types
+// ─────────────────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize, Deserialize, PartialEq, sqlx::Type)]
+#[sqlx(type_name = "verification_status", rename_all = "PascalCase")]
+pub enum VerificationStatus {
+    Proved,
+    Violated,
+    Unknown,
+    Skipped,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FormalVerificationSession {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub version: String,
+    pub verifier_version: String,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FormalVerificationProperty {
+    pub id: Uuid,
+    pub session_id: Uuid,
+    pub property_id: String,
+    pub description: Option<String>,
+    pub invariant: String,
+    pub severity: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct FormalVerificationResult {
+    pub id: Uuid,
+    pub property_id: Uuid,
+    pub status: VerificationStatus,
+    pub counterexample: Option<String>,
+    pub details: Option<String>,
+}
+
+#[derive(Debug, Deserialize, Serialize)]
+pub struct RunVerificationRequest {
+    pub properties_file: String, // could be raw TOML string or base64
+    pub verifier_version: Option<String>,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FormalVerificationPropertyResult {
+    pub property: FormalVerificationProperty,
+    pub result: FormalVerificationResult,
+}
+
+#[derive(Debug, Serialize, Deserialize)]
+pub struct FormalVerificationReport {
+    pub session: FormalVerificationSession,
+    pub properties: Vec<FormalVerificationPropertyResult>,
+}
