@@ -1,5 +1,6 @@
 pub mod migrations;
 
+
 use axum::{
     extract::{
         rejection::{JsonRejection, QueryRejection},
@@ -23,18 +24,21 @@ use axum::{
 use rust_decimal::Decimal;
 use shared::{
     AbTest, AbTestAssignment, AbTestMetric, AbTestResult, AbTestStatus, AbTestVariant,
-    AdvanceCanaryRequest, AlertSeverity, AnalyticsEventType, CanaryMetric, CanaryRelease,
-    CanaryStatus, CanaryUserAssignment, Contract, ContractAnalyticsResponse, ContractDeployment,
-    ContractSearchParams, ContractVersion, CreateAbTestRequest, CreateAlertConfigRequest,
-    CreateCanaryRequest, DeployGreenRequest, DeploymentEnvironment, DeploymentStatus,
+    AdvanceCanaryRequest, AlertSeverity, CanaryMetric, CanaryRelease, CanaryStatus,
+    CanaryUserAssignment, Contract, ContractDependency, ContractDeployment, ContractSearchParams,
+    ContractVersion, CreateAbTestRequest, CreateAlertConfigRequest, CreateCanaryRequest,
+    DeployGreenRequest, DependencyTreeNode, DeploymentEnvironment, DeploymentStatus,
     DeploymentSwitch, GetVariantRequest, HealthCheckRequest, MetricType, PaginatedResponse,
     PerformanceAlert, PerformanceAlertConfig, PerformanceAnomaly, PerformanceMetric,
     PerformanceTrend, PublishRequest, Publisher, RecordAbTestMetricRequest,
     RecordCanaryMetricRequest, RecordPerformanceMetricRequest, RolloutStage,
-    SwitchDeploymentRequest, TrendingContract, TrendingParams, VariantType, VerifyRequest,
+    SwitchDeploymentRequest, VariantType, VerifyRequest, VersionConstraint,
 };
+use rust_decimal::Decimal;
+use std::collections::HashSet;
 use std::str::FromStr;
 use uuid::Uuid;
+
 
 use crate::{
     analytics,
@@ -61,14 +65,14 @@ fn map_query_rejection(err: QueryRejection) -> ApiError {
     )
 }
 
-/// Health check ΓÇö probes DB connectivity and reports uptime.
+/// Health check Î“Ã‡Ã¶ probes DB connectivity and reports uptime.
 /// Returns 200 when everything is reachable, 503 when the database
 /// connection pool cannot satisfy a trivial query.
 pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<serde_json::Value>) {
     let uptime = state.started_at.elapsed().as_secs();
     let now = chrono::Utc::now().to_rfc3339();
 
-    // Quick connectivity probe ΓÇö keeps the query as cheap as possible
+    // Quick connectivity probe Î“Ã‡Ã¶ keeps the query as cheap as possible
     // so that frequent polling from orchestrators doesn't add load.
     let db_ok = sqlx::query_scalar::<_, i32>("SELECT 1")
         .fetch_one(&state.db)
@@ -90,7 +94,7 @@ pub async fn health_check(State(state): State<AppState>) -> (StatusCode, Json<se
     } else {
         tracing::warn!(
             uptime_secs = uptime,
-            "health check degraded ΓÇö db unreachable"
+            "health check degraded Î“Ã‡Ã¶ db unreachable"
         );
 
         (
@@ -579,7 +583,7 @@ pub async fn deploy_green(
 
     let thirty_days_ago = chrono::Utc::now() - chrono::Duration::days(30);
 
-    // ΓöÇΓöÇ Deployment stats ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Î“Ã¶Ã‡Î“Ã¶Ã‡ Deployment stats Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     let deploy_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(*) FROM analytics_events \
          WHERE contract_id = $1 AND event_type = 'contract_deployed'",
@@ -617,7 +621,7 @@ pub async fn deploy_green(
     .await
     .map_err(|e| db_internal_error("network breakdown", e))?;
 
-    // ΓöÇΓöÇ Interactor stats ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Î“Ã¶Ã‡Î“Ã¶Ã‡ Interactor stats Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     let unique_count: i64 = sqlx::query_scalar(
         "SELECT COUNT(DISTINCT user_address) FROM analytics_events \
          WHERE contract_id = $1 AND user_address IS NOT NULL",
@@ -642,7 +646,7 @@ pub async fn deploy_green(
         .map(|(address, count)| TopUser { address, count })
         .collect();
 
-    // ΓöÇΓöÇ Timeline (last 30 days) ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Î“Ã¶Ã‡Î“Ã¶Ã‡ Timeline (last 30 days) Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     let timeline_rows: Vec<(chrono::NaiveDate, i64)> = sqlx::query_as(
         r#"
         SELECT d::date AS date, COALESCE(e.cnt, 0) AS count
@@ -672,7 +676,7 @@ pub async fn deploy_green(
         .map(|(date, count)| TimelineEntry { date, count })
         .collect();
 
-    // ΓöÇΓöÇ Build response ΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇΓöÇ
+    // Î“Ã¶Ã‡Î“Ã¶Ã‡ Build response Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡Î“Ã¶Ã‡
     Ok(Json(ContractAnalyticsResponse {
         contract_id: id,
         deployments: DeploymentStats {
@@ -1941,40 +1945,123 @@ pub async fn acknowledge_alert(
         "alert_id": alert_id
     })))
 }
-pub async fn get_trending_contracts(
+
+
+/// Get contract dependencies (recursive tree)
+pub async fn get_contract_dependencies(
     State(state): State<AppState>,
-    params: Result<Query<TrendingParams>, QueryRejection>,
-) -> ApiResult<Json<Vec<TrendingContract>>> {
-    let Query(params) = params.map_err(map_query_rejection)?;
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<DependencyTreeNode>>> {
+    let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
+        ApiError::bad_request(
+            "InvalidContractId",
+            format!("Invalid contract ID format: {}", id),
+        )
+    })?;
 
-    let limit = params.limit.unwrap_or(10).min(50).max(1);
-    let timeframe = params.timeframe.as_deref().unwrap_or("7d");
+    // Helper to recursively fetch dependencies
+    // Note: In production, we'd want to limit recursion depth
+    async fn fetch_deps(
+        pool: &sqlx::PgPool,
+        contract_id: Uuid,
+        visited: &mut HashSet<Uuid>,
+    ) -> ApiResult<Vec<DependencyTreeNode>> {
+        if visited.contains(&contract_id) {
+            return Err(ApiError::bad_request(
+                "CircularDependency",
+                "Circular dependency detected",
+            ));
+        }
+        visited.insert(contract_id);
 
-    let interval = match timeframe {
-        "30d" => "30 days",
-        "90d" => "90 days",
-        _ => "7 days",
-    };
+        let deps: Vec<ContractDependency> =
+            sqlx::query_as("SELECT * FROM contract_dependencies WHERE contract_id = $1")
+                .bind(contract_id)
+                .fetch_all(pool)
+                .await
+                .map_err(|err| db_internal_error("fetch dependencies", err))?;
 
-    let query = format!(
-        r#"
-        SELECT 
-            id, contract_id, name, description, network, is_verified, category, tags, created_at,
-            popularity_score,
-            (SELECT COUNT(*) FROM contract_deployments WHERE contract_id = c.id) as deployment_count,
-            (SELECT COUNT(*) FROM contract_interactions WHERE contract_id = c.id) as interaction_count
-        FROM contracts c
-        WHERE c.is_verified = true OR (SELECT COUNT(*) FROM contract_deployments WHERE contract_id = c.id) > 0
-        ORDER BY popularity_score DESC
-        LIMIT $1
-        "#
-    );
+        let mut nodes = Vec::new();
+        for dep in deps {
+            // If dependency points to a valid contract, fetch it to get details
+            if let Some(dep_contract_id) = dep.dependency_contract_id {
+                let contract: Contract = sqlx::query_as("SELECT * FROM contracts WHERE id = $1")
+                    .bind(dep_contract_id)
+                    .fetch_one(pool)
+                    .await
+                    .map_err(|err| db_internal_error("fetch dependent contract", err))?;
 
-    let contracts: Vec<TrendingContract> = sqlx::query_as(&query)
-        .bind(limit)
-        .fetch_all(&state.db)
-        .await
-        .map_err(|err| db_internal_error("trending contracts", err))?;
+                // Recursively fetch sub-dependencies
+                // We clone visited for each branch to allow shared dependencies (diamond problem)
+                // but avoid cycles in the current path.
+                let mut path_visited = visited.clone();
+                let sub_deps =
+                    Box::pin(fetch_deps(pool, dep_contract_id, &mut path_visited)).await?;
 
-    Ok(Json(contracts))
+                nodes.push(DependencyTreeNode {
+                    contract_id: contract.contract_id,
+                    name: contract.name,
+                    current_version: "1.0.0".to_string(), // TODO: fetch actual version
+                    constraint_to_parent: dep.version_constraint,
+                    dependencies: sub_deps,
+                });
+            } else {
+                // Dependency not found in registry (unresolved)
+                nodes.push(DependencyTreeNode {
+                    contract_id: "unknown".to_string(),
+                    name: dep.dependency_name,
+                    current_version: "unknown".to_string(),
+                    constraint_to_parent: dep.version_constraint,
+                    dependencies: Vec::new(),
+                });
+            }
+        }
+
+        Ok(nodes)
+    }
+
+    let mut visited = HashSet::new();
+    let tree = fetch_deps(&state.db, contract_uuid, &mut visited).await?;
+
+    Ok(Json(tree))
 }
+
+/// Get contracts that depend on this one
+pub async fn get_contract_dependents(
+    State(state): State<AppState>,
+    Path(id): Path<String>,
+) -> ApiResult<Json<Vec<serde_json::Value>>> {
+    let contract_uuid = Uuid::parse_str(&id).map_err(|_| {
+        ApiError::bad_request(
+            "InvalidContractId",
+            format!("Invalid contract ID format: {}", id),
+        )
+    })?;
+
+    // Join contract_dependencies with contracts to get details of the dependent
+    let rows: Vec<(Uuid, String, String, String)> = sqlx::query_as(
+        "SELECT c.id, c.name, c.contract_id, cd.version_constraint 
+         FROM contract_dependencies cd
+         JOIN contracts c ON cd.contract_id = c.id
+         WHERE cd.dependency_contract_id = $1",
+    )
+    .bind(contract_uuid)
+    .fetch_all(&state.db)
+    .await
+    .map_err(|err| db_internal_error("fetch dependents", err))?;
+
+    let dependents = rows
+        .into_iter()
+        .map(|(id, name, contract_id, constraint)| {
+            serde_json::json!({
+                "id": id,
+                "name": name,
+                "contract_id": contract_id,
+                "required_version": constraint
+            })
+        })
+        .collect();
+
+    Ok(Json(dependents))
+}
+

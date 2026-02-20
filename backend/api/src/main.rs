@@ -8,6 +8,8 @@ mod benchmark_routes;
 mod cache;
 mod cache_benchmark;
 mod checklist;
+mod contract_history_handlers;
+mod contract_history_routes;
 mod detector;
 mod error;
 mod handlers;
