@@ -118,6 +118,27 @@ if [ "$ALL_PRESENT" = false ]; then
 fi
 echo ""
 
+# Check 2e: Governance Framework Feature Files
+echo "✓ Check 2e: Governance Framework Feature Files"
+GOVERNANCE_FILES=(
+    "backend/api/src/governance_handlers.rs"
+    "backend/api/src/governance_routes.rs"
+)
+
+for file in "${GOVERNANCE_FILES[@]}"; do
+    if [ -f "$file" ]; then
+        echo "  ✅ $file"
+    else
+        echo "  ❌ $file (missing)"
+        ALL_PRESENT=false
+    fi
+done
+
+if [ "$ALL_PRESENT" = false ]; then
+    exit 1
+fi
+echo ""
+
 # Check 3: Frontend Structure
 echo "✓ Check 3: Frontend Structure"
 if [ -f "frontend/package.json" ]; then

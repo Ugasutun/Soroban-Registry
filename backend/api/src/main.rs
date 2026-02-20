@@ -16,6 +16,8 @@ mod cost_handlers;
 mod cost_routes;
 mod detector;
 mod error;
+mod governance_handlers;
+mod governance_routes;
 mod handlers;
 mod maintenance_handlers;
 mod maintenance_middleware;
@@ -103,6 +105,7 @@ async fn main() -> Result<()> {
         .merge(maturity_routes::maturity_routes())
         .merge(cost_routes::cost_routes())
         .merge(backup_routes::backup_routes())
+        .merge(governance_routes::governance_routes())
         .fallback(handlers::route_not_found)
         .layer(middleware::from_fn(request_logger))
         .layer(middleware::from_fn_with_state(

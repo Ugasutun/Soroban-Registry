@@ -628,6 +628,103 @@ pub struct BackupRestoration {
     pub restored_at: DateTime<Utc>,
 }
 
+// ═══════════════════════════════════════════════════════════════════════════
+// GOVERNANCE FRAMEWORK
+// ═══════════════════════════════════════════════════════════════════════════
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "governance_model", rename_all = "snake_case")]
+pub enum GovernanceModel {
+    TokenWeighted,
+    Quadratic,
+    Multisig,
+    Timelock,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "proposal_status", rename_all = "lowercase")]
+pub enum ProposalStatus {
+    Pending,
+    Active,
+    Passed,
+    Rejected,
+    Executed,
+    Cancelled,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, sqlx::Type)]
+#[sqlx(type_name = "vote_choice", rename_all = "lowercase")]
+pub enum VoteChoice {
+    For,
+    Against,
+    Abstain,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GovernanceProposal {
+    pub id: Uuid,
+    pub contract_id: Uuid,
+    pub title: String,
+    pub description: String,
+    pub governance_model: GovernanceModel,
+    pub proposer: Uuid,
+    pub status: ProposalStatus,
+    pub voting_starts_at: DateTime<Utc>,
+    pub voting_ends_at: DateTime<Utc>,
+    pub execution_delay_hours: Option<i32>,
+    pub quorum_required: i32,
+    pub approval_threshold: i32,
+    pub created_at: DateTime<Utc>,
+    pub executed_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CreateProposalRequest {
+    pub title: String,
+    pub description: String,
+    pub governance_model: GovernanceModel,
+    pub voting_duration_hours: i32,
+    pub execution_delay_hours: Option<i32>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct GovernanceVote {
+    pub id: Uuid,
+    pub proposal_id: Uuid,
+    pub voter: Uuid,
+    pub vote_choice: VoteChoice,
+    pub voting_power: i64,
+    pub delegated_from: Option<Uuid>,
+    pub created_at: DateTime<Utc>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CastVoteRequest {
+    pub vote_choice: VoteChoice,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct VoteDelegation {
+    pub id: Uuid,
+    pub delegator: Uuid,
+    pub delegate: Uuid,
+    pub contract_id: Option<Uuid>,
+    pub active: bool,
+    pub created_at: DateTime<Utc>,
+    pub revoked_at: Option<DateTime<Utc>>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ProposalResults {
+    pub proposal: GovernanceProposal,
+    pub votes_for: i64,
+    pub votes_against: i64,
+    pub votes_abstain: i64,
+    pub total_votes: i64,
+    pub quorum_met: bool,
+    pub approved: bool,
+}
+
 impl std::fmt::Display for DeploymentEnvironment {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
          match self {
