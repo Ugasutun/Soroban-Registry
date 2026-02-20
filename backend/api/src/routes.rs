@@ -3,7 +3,7 @@ use axum::{
     Router,
 };
 
-use crate::{handlers, state::AppState};
+use crate::{compatibility_handlers, handlers, state::AppState};
 
 pub fn contract_routes() -> Router<AppState> {
     Router::new()
@@ -27,6 +27,15 @@ pub fn contract_routes() -> Router<AppState> {
         .route("/api/deployments/:contract_id/rollback", post(handlers::rollback_deployment))
         .route("/api/deployments/health", post(handlers::report_health_check))
         .route("/api/contracts/:id/state/:key", get(handlers::get_contract_state).post(handlers::update_contract_state))
+        .route(
+            "/api/contracts/:id/compatibility",
+            get(compatibility_handlers::get_contract_compatibility)
+                .post(compatibility_handlers::add_contract_compatibility),
+        )
+        .route(
+            "/api/contracts/:id/compatibility/export",
+            get(compatibility_handlers::export_contract_compatibility),
+        )
 }
 
 /// Publisher-related routes

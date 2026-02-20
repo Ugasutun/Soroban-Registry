@@ -216,3 +216,67 @@ pub struct ExportRequest {
 fn default_true() -> bool {
     true
 }
+
+// ─────────────────────────────────────────────────────────
+// Compatibility matrix types
+// ─────────────────────────────────────────────────────────
+
+/// Raw database row for a compatibility entry (used by sqlx query_as!)
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CompatibilityRow {
+    pub id: Uuid,
+    pub source_contract_id: Uuid,
+    pub source_version: String,
+    pub target_contract_id: Uuid,
+    pub target_contract_stellar_id: String,
+    pub target_contract_name: String,
+    pub target_version: String,
+    pub stellar_version: Option<String>,
+    pub is_compatible: bool,
+    pub created_at: DateTime<Utc>,
+    pub updated_at: DateTime<Utc>,
+}
+
+/// A single entry in the grouped compatibility matrix response
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CompatibilityEntry {
+    pub target_contract_id: Uuid,
+    pub target_contract_stellar_id: String,
+    pub target_contract_name: String,
+    pub target_version: String,
+    pub stellar_version: Option<String>,
+    pub is_compatible: bool,
+}
+
+/// Full API response for GET /contracts/:id/compatibility
+#[derive(Debug, Serialize)]
+pub struct CompatibilityMatrixResponse {
+    pub contract_id: Uuid,
+    /// Keyed by source_version; each value is the list of targets
+    pub versions: std::collections::BTreeMap<String, Vec<CompatibilityEntry>>,
+    /// Human-readable warnings for incompatible pairs
+    pub warnings: Vec<String>,
+    pub total_entries: usize,
+}
+
+/// Request body for POST /contracts/:id/compatibility
+#[derive(Debug, Deserialize)]
+pub struct AddCompatibilityRequest {
+    pub source_version: String,
+    pub target_contract_id: Uuid,
+    pub target_version: String,
+    pub stellar_version: Option<String>,
+    #[serde(default = "default_true")]
+    pub is_compatible: bool,
+}
+
+/// Flat row for CSV / JSON export
+#[derive(Debug, Clone, Serialize, Deserialize, FromRow)]
+pub struct CompatibilityExportRow {
+    pub source_version: String,
+    pub target_contract_stellar_id: String,
+    pub target_contract_name: String,
+    pub target_version: String,
+    pub stellar_version: Option<String>,
+    pub is_compatible: bool,
+}

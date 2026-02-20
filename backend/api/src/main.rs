@@ -2,6 +2,7 @@ mod aggregation;
 mod analytics;
 mod audit_handlers;
 mod audit_routes;
+mod compatibility_handlers;
 mod benchmark_engine;
 mod benchmark_handlers;
 mod benchmark_routes;

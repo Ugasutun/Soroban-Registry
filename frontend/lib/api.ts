@@ -75,15 +75,15 @@ export const api = {
       return new Promise((resolve) => {
         setTimeout(() => {
           let filtered = [...MOCK_CONTRACTS];
-          
+
           if (params?.query) {
             const q = params.query.toLowerCase();
-            filtered = filtered.filter(c => 
-              c.name.toLowerCase().includes(q) || 
+            filtered = filtered.filter(c =>
+              c.name.toLowerCase().includes(q) ||
               (c.description && c.description.toLowerCase().includes(q))
             );
           }
-          
+
           if (params?.category) {
             filtered = filtered.filter(c => c.category === params.category);
           }
@@ -99,7 +99,7 @@ export const api = {
             page_size: params?.page_size || 20,
             total_pages: 1
           });
-        }, 500); 
+        }, 500);
       });
     }
 
@@ -140,7 +140,7 @@ export const api = {
       return new Promise((resolve) => {
         setTimeout(() => {
           resolve(MOCK_EXAMPLES[id] || []);
-        }, 500); 
+        }, 500);
       });
     }
 
@@ -205,10 +205,10 @@ export const api = {
   async getPublisher(id: string): Promise<Publisher> {
     if (USE_MOCKS) {
       return Promise.resolve({
-          id: id,
-          stellar_address: 'G...',
-          username: 'Mock Publisher',
-          created_at: new Date().toISOString()
+        id: id,
+        stellar_address: 'G...',
+        username: 'Mock Publisher',
+        created_at: new Date().toISOString()
       });
     }
 
@@ -230,18 +230,40 @@ export const api = {
   // Stats endpoint
   async getStats(): Promise<{ total_contracts: number; verified_contracts: number; total_publishers: number }> {
     if (USE_MOCKS) {
-       return Promise.resolve({
-           total_contracts: MOCK_CONTRACTS.length,
-           verified_contracts: MOCK_CONTRACTS.filter(c => c.is_verified).length,
-           total_publishers: 5
-       });
+      return Promise.resolve({
+        total_contracts: MOCK_CONTRACTS.length,
+        verified_contracts: MOCK_CONTRACTS.filter(c => c.is_verified).length,
+        total_publishers: 5
+      });
     }
 
     const response = await fetch(`${API_URL}/api/stats`);
     if (!response.ok) throw new Error('Failed to fetch stats');
     return response.json();
   },
+
+  // Compatibility endpoints
+  async getCompatibility(id: string): Promise<CompatibilityMatrix> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/compatibility`);
+    if (!response.ok) throw new Error('Failed to fetch compatibility matrix');
+    return response.json();
+  },
+
+  async addCompatibility(id: string, data: AddCompatibilityRequest): Promise<unknown> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/compatibility`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to add compatibility entry');
+    return response.json();
+  },
+
+  getCompatibilityExportUrl(id: string, format: 'csv' | 'json'): string {
+    return `${API_URL}/api/contracts/${id}/compatibility/export?format=${format}`;
+  },
 };
+
 
 export interface ContractExample {
   id: string;
@@ -264,3 +286,32 @@ export interface ExampleRating {
   rating: number;
   created_at: string;
 }
+
+// ─── Compatibility Matrix ────────────────────────────────────────────────────
+
+export interface CompatibilityEntry {
+  target_contract_id: string;
+  target_contract_stellar_id: string;
+  target_contract_name: string;
+  target_version: string;
+  stellar_version?: string;
+  is_compatible: boolean;
+}
+
+/** Shape returned by GET /api/contracts/:id/compatibility */
+export interface CompatibilityMatrix {
+  contract_id: string;
+  /** Keyed by source version string */
+  versions: Record<string, CompatibilityEntry[]>;
+  warnings: string[];
+  total_entries: number;
+}
+
+export interface AddCompatibilityRequest {
+  source_version: string;
+  target_contract_id: string;
+  target_version: string;
+  stellar_version?: string;
+  is_compatible: boolean;
+}
+
