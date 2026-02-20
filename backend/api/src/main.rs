@@ -40,6 +40,9 @@ mod routes;
 mod state;
 mod template_handlers;
 mod template_routes;
+mod scanner_service;
+mod scan_handlers;
+mod scan_routes;
 mod trust;
 mod health_monitor;
 mod migration_cli;
@@ -843,6 +846,7 @@ async fn main() -> Result<()> {
         .merge(config_routes::config_routes())
         .merge(contract_history_routes::contract_history_routes())
         .merge(template_routes::template_routes())
+        .merge(scan_routes::scan_routes())
         .route("/metrics", get(observability::metrics_handler))
         .merge(routes::observability_routes())
         .merge(residency_routes::residency_routes())
