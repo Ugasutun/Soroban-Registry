@@ -8,6 +8,7 @@ use crate::{handlers, state::AppState};
 pub fn contract_routes() -> Router<AppState> {
     Router::new()
         .route("/api/contracts", get(handlers::list_contracts))
+        .route("/api/contracts/graph", get(handlers::get_contract_graph))
         .route("/api/contracts", post(handlers::publish_contract))
         .route(
             "/api/contracts/trending",

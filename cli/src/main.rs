@@ -68,7 +68,11 @@ pub enum Commands {
         #[arg(long)]
         description: Option<String>,
 
-        /// Contract category (e.g. token, defi, nft)
+        /// Network (mainnet, testnet, futurenet)
+        #[arg(long, default_value = "Testnet")]
+        network: String,
+
+        /// Category
         #[arg(long)]
         category: Option<String>,
 
