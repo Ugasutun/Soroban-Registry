@@ -8,18 +8,23 @@ mod benchmark_routes;
 mod cache;
 mod cache_benchmark;
 mod checklist;
+mod contract_history_handlers;
+mod contract_history_routes;
 mod detector;
 mod error;
 mod handlers;
+mod models;
 mod multisig_handlers;
 mod multisig_routes;
-mod models;
+mod popularity;
 mod rate_limit;
 mod residency_handlers;
 mod residency_routes;
 mod routes;
-mod scoring;
 mod state;
+mod trust;
+mod health_monitor;
+mod migration_cli;
 
 use anyhow::Result;
 use axum::http::{header, HeaderValue, Method};
@@ -47,6 +52,9 @@ async fn main() -> Result<()> {
         .with(tracing_subscriber::fmt::layer())
         .init();
 
+    let args: Vec<String> = std::env::args().skip(1).collect();
+    let migration_command = migration_cli::parse_command(&args)?;
+
     // Database connection
     let database_url = std::env::var("DATABASE_URL").expect("DATABASE_URL must be set");
 
@@ -55,13 +63,20 @@ async fn main() -> Result<()> {
         .connect(&database_url)
         .await?;
 
-    // Run migrations
+    // Run migrations by default, or execute migration subcommands.
+    if let Some(command) = migration_command {
+        migration_cli::execute(command, &pool).await?;
+        return Ok(());
+    }
+
     sqlx::migrate!("../../database/migrations")
         .run(&pool)
         .await?;
 
     tracing::info!("Database connected and migrations applied");
 
+    // Spawn background popularity scoring job (runs hourly)
+    popularity::spawn_popularity_task(pool.clone());
     // Spawn the hourly analytics aggregation background task
     aggregation::spawn_aggregation_task(pool.clone());
 
@@ -131,3 +146,4 @@ async fn request_logger(
 
     response
 }
+        .merge(routes::publisher_routes())
