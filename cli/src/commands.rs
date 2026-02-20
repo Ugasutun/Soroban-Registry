@@ -8,6 +8,7 @@ use std::path::Path;
 
 use crate::patch::{PatchManager, Severity};
 use crate::profiler;
+use crate::sla::SlaManager;
 use crate::test_framework;
 
 pub async fn search(
@@ -805,7 +806,7 @@ pub async fn run_tests(
     }
 
     if let Some(junit_path) = junit_output {
-        test_framework::generate_junit_xml(&[result], Path::new(junit_path))?;
+        test_framework::generate_junit_xml(&[result.clone()], Path::new(junit_path))?;
         println!("\n{} JUnit XML report exported to: {}", "✓".green(), junit_path);
     }
 
@@ -822,6 +823,90 @@ pub async fn run_tests(
     if !result.passed {
         anyhow::bail!("Tests failed");
     }
+
+    Ok(())
+}
+
+pub fn sla_record(id: &str, uptime: f64, latency: f64, error_rate: f64) -> Result<()> {
+    println!("\n{}", "Recording SLA metrics...".bold().cyan());
+
+    let mut mgr = SlaManager::new();
+    mgr.record(id, uptime, latency, error_rate);
+
+    println!("{}", "✓ Metrics recorded!".green().bold());
+    println!("  {}: {}", "Contract".bold(), id.bright_black());
+    println!("  {}: {}%", "Uptime".bold(), uptime);
+    println!("  {}: {}ms", "Latency".bold(), latency);
+    println!("  {}: {}%\n", "Error Rate".bold(), error_rate);
+
+    let status = mgr.evaluate(id)?;
+    if !status.compliant {
+        println!("  {} {}", "⚠".red(), "SLA VIOLATION DETECTED".red().bold());
+        for v in &status.violations {
+            println!(
+                "    {} {} — actual: {:.2}, target: {:.2}",
+                "✗".red(),
+                v.metric.bold(),
+                v.actual,
+                v.target
+            );
+        }
+        println!(
+            "  {}: ${:.2}\n",
+            "Penalty Accrued".bold(),
+            status.penalty_accrued
+        );
+    } else {
+        println!("  {}\n", "✓ All SLA targets met".green());
+    }
+
+    Ok(())
+}
+
+pub fn sla_status(id: &str) -> Result<()> {
+    println!("\n{}", "SLA Dashboard".bold().cyan());
+    println!("{}", "═".repeat(60).cyan());
+
+    let mut mgr = SlaManager::new();
+    mgr.record(id, 0.0, 0.0, 0.0);
+    let status = mgr.evaluate(id)?;
+
+    println!("  {}: {}", "Contract".bold(), id.bright_black());
+    println!("  {}: {}", "Records".bold(), status.total_records);
+    println!(
+        "  {}: {}",
+        "Status".bold(),
+        if status.compliant {
+            "COMPLIANT".green().bold()
+        } else {
+            "NON-COMPLIANT".red().bold()
+        }
+    );
+
+    println!("\n  {}", "Targets".bold().underline());
+    println!(
+        "    Uptime    ≥ {}%  |  Latency ≤ {}ms  |  Errors ≤ {}%",
+        mgr.targets.min_uptime, mgr.targets.max_latency_ms, mgr.targets.max_error_rate
+    );
+
+    if !status.violations.is_empty() {
+        println!("\n  {} {}", "⚠".red(), "Active Violations".red().bold());
+        for v in &status.violations {
+            println!(
+                "    {} {} — actual: {:.2}, target: {:.2}",
+                "✗".red(),
+                v.metric.bold(),
+                v.actual,
+                v.target
+            );
+        }
+    }
+
+    println!("\n  {}", "Financials".bold().underline());
+    println!("    Penalties: ${:.2}", status.penalty_accrued);
+    println!("    Credits:   ${:.2}", status.credits_issued);
+
+    println!("\n{}\n", "═".repeat(60).cyan());
 
     Ok(())
 }
