@@ -309,6 +309,12 @@ export const api = {
     return response.json();
   },
 
+  async getContractDependencies(id: string): Promise<DependencyTreeNode[]> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/dependencies`);
+    if (!response.ok) throw new Error('Failed to fetch contract dependencies');
+    return response.json();
+  },
+
   async publishContract(data: PublishRequest): Promise<Contract> {
     if (USE_MOCKS) {
       throw new Error("Publishing is not supported in mock mode");
@@ -326,6 +332,28 @@ export const api = {
   async getContractHealth(id: string): Promise<ContractHealth> {
     const response = await fetch(`${API_URL}/api/contracts/${id}/health`);
     if (!response.ok) throw new Error("Failed to fetch contract health");
+    return response.json();
+  },
+
+  async getFormalVerificationResults(id: string): Promise<FormalVerificationReport[]> {
+    if (USE_MOCKS) {
+      return Promise.resolve([]);
+    }
+    const response = await fetch(`${API_URL}/api/contracts/${id}/formal-verification`);
+    if (!response.ok) throw new Error('Failed to fetch formal verification results');
+    return response.json();
+  },
+
+  async runFormalVerification(id: string, data: RunVerificationRequest): Promise<FormalVerificationReport> {
+    if (USE_MOCKS) {
+      throw new Error('Formal verification is not supported in mock mode');
+    }
+    const response = await fetch(`${API_URL}/api/contracts/${id}/formal-verification`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to run formal verification');
     return response.json();
   },
 
@@ -375,11 +403,33 @@ export const api = {
     return response.json();
   },
 
+  // Compatibility endpoints
+  async getCompatibility(id: string): Promise<CompatibilityMatrix> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/compatibility`);
+    if (!response.ok) throw new Error('Failed to fetch compatibility matrix');
+    return response.json();
+  },
+
+  async addCompatibility(id: string, data: AddCompatibilityRequest): Promise<unknown> {
+    const response = await fetch(`${API_URL}/api/contracts/${id}/compatibility`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    if (!response.ok) throw new Error('Failed to add compatibility entry');
+    return response.json();
+  },
+
+  getCompatibilityExportUrl(id: string, format: 'csv' | 'json'): string {
+    return `${API_URL}/api/contracts/${id}/compatibility/export?format=${format}`;
+  },
+
   // Graph endpoint
   async getContractGraph(network?: string): Promise<GraphResponse> {
     const queryParams = new URLSearchParams();
     if (network) queryParams.append("network", network);
     const qs = queryParams.toString();
+
     const response = await fetch(`${API_URL}/api/contracts/graph${qs ? `?${qs}` : ""}`);
     if (!response.ok) throw new Error("Failed to fetch contract graph");
     return response.json();
@@ -397,6 +447,7 @@ export const api = {
     }
     const response = await fetch(`${API_URL}/api/templates`);
     if (!response.ok) throw new Error('Failed to fetch templates');
+
     return response.json();
   },
 };
@@ -439,6 +490,7 @@ export interface GraphResponse {
   edges: GraphEdge[];
 }
 
+
 export interface ContractExample {
   id: string;
   contract_id: string;
@@ -461,49 +513,75 @@ export interface ExampleRating {
   created_at: string;
 }
 
-export interface MaintenanceWindow {
+// ─── Compatibility Matrix ────────────────────────────────────────────────────
+
+export interface CompatibilityEntry {
+  target_contract_id: string;
+  target_contract_stellar_id: string;
+  target_contract_name: string;
+  target_version: string;
+  stellar_version?: string;
+  is_compatible: boolean;
+}
+
+/** Shape returned by GET /api/contracts/:id/compatibility */
+export interface CompatibilityMatrix {
+  contract_id: string;
+  /** Keyed by source version string */
+  versions: Record<string, CompatibilityEntry[]>;
+  warnings: string[];
+  total_entries: number;
+}
+
+export interface AddCompatibilityRequest {
+  source_version: string;
+  target_contract_id: string;
+  target_version: string;
+  stellar_version?: string;
+  is_compatible: boolean;
+}
+
+// ─── Formal Verification ─────────────────────────────────────────────────────
+
+export type VerificationStatus = 'Proved' | 'Violated' | 'Unknown' | 'Skipped';
+
+export interface FormalVerificationSession {
   id: string;
   contract_id: string;
-  message: string;
-  started_at: string;
-  scheduled_end_at?: string;
-  ended_at?: string;
-  created_by: string;
+  version: string;
+  verifier_version: string;
   created_at: string;
+  updated_at: string;
 }
 
-export interface MaintenanceStatus {
-  is_maintenance: boolean;
-  current_window?: MaintenanceWindow;
+export interface FormalVerificationProperty {
+  id: string;
+  session_id: string;
+  property_id: string;
+  description?: string;
+  invariant: string;
+  severity: string;
 }
 
-export const maintenanceApi = {
-  async getStatus(contractId: string): Promise<MaintenanceStatus> {
-    const response = await fetch(`${API_URL}/api/contracts/${contractId}/maintenance`);
-    if (!response.ok) throw new Error('Failed to fetch maintenance status');
-    return response.json();
-  },
+export interface FormalVerificationResult {
+  id: string;
+  property_id: string;
+  status: VerificationStatus;
+  counterexample?: string;
+  details?: string;
+}
 
-  async getHistory(contractId: string): Promise<MaintenanceWindow[]> {
-    const response = await fetch(`${API_URL}/api/contracts/${contractId}/maintenance/history`);
-    if (!response.ok) throw new Error('Failed to fetch maintenance history');
-    return response.json();
-  },
+export interface FormalVerificationPropertyResult {
+  property: FormalVerificationProperty;
+  result: FormalVerificationResult;
+}
 
-  async start(contractId: string, message: string, scheduledEndAt?: string): Promise<MaintenanceWindow> {
-    const response = await fetch(`${API_URL}/api/contracts/${contractId}/maintenance`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({ message, scheduled_end_at: scheduledEndAt }),
-    });
-    if (!response.ok) throw new Error('Failed to start maintenance');
-    return response.json();
-  },
+export interface FormalVerificationReport {
+  session: FormalVerificationSession;
+  properties: FormalVerificationPropertyResult[];
+}
 
-  async end(contractId: string): Promise<void> {
-    const response = await fetch(`${API_URL}/api/contracts/${contractId}/maintenance`, {
-      method: 'DELETE',
-    });
-    if (!response.ok) throw new Error('Failed to end maintenance');
-  },
-};
+export interface RunVerificationRequest {
+  properties_file: string;
+  verifier_version?: string;
+}
