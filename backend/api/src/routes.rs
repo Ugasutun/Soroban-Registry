@@ -3,6 +3,9 @@ use axum::{
     Router,
 };
 
+use crate::{handlers, metrics_handler, resource_handlers, state::AppState};
+use crate::{auth_handlers, handlers, metrics_handler, resource_handlers, state::AppState};
+use crate::{compatibility_handlers, handlers, metrics_handler, state::AppState};
 use crate::{handlers, state::AppState};
 
 pub fn observability_routes() -> Router<AppState> {
@@ -24,6 +27,23 @@ pub fn contract_routes() -> Router<AppState> {
         .route("/api/contracts/:id/dependencies", get(handlers::get_contract_dependencies))
         .route("/api/contracts/:id/dependents", get(handlers::get_contract_dependents))
         .route("/api/contracts/verify", post(handlers::verify_contract))
+        .route(
+            "/api/contracts/:id/state/:key",
+            get(handlers::get_contract_state).post(handlers::update_contract_state),
+        )
+        .route(
+            "/api/contracts/:id/performance",
+            get(handlers::get_contract_performance),
+        )
+        .route(
+            "/api/contracts/:id/compatibility",
+            get(compatibility_handlers::get_contract_compatibility)
+                .post(compatibility_handlers::add_contract_compatibility),
+        )
+        .route(
+            "/api/contracts/:id/compatibility/export",
+            get(compatibility_handlers::export_contract_compatibility),
+        )
         .route("/api/contracts/:id/deployments/status", get(handlers::get_deployment_status))
         .route("/api/deployments/green", post(handlers::deploy_green))
 }
