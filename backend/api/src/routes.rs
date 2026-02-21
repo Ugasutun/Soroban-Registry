@@ -1,8 +1,9 @@
 use axum::{
-    routing::{get, post, put},
+    routing::{get, patch, post, put},
     Router,
 };
 
+use crate::{auth_handlers, handlers, metrics_handler, resource_handlers, state::AppState};
 use crate::{compatibility_handlers, handlers, metrics_handler, state::AppState};
 
 pub fn observability_routes() -> Router<AppState> {
@@ -25,6 +26,9 @@ pub fn contract_routes() -> Router<AppState> {
             get(handlers::get_contract_versions),
         )
         .route(
+            "/api/contracts/:id/state/:key",
+            get(handlers::get_contract_state).post(handlers::update_contract_state),
+        )
             "/api/contracts/:id/analytics",
             get(handlers::get_contract_analytics),
         )
@@ -106,58 +110,48 @@ pub fn migration_routes() -> Router<AppState> {
 
 pub fn canary_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/canaries", post(handlers::create_canary))
-        .route("/api/canaries/:id", get(handlers::get_canary_status))
-        .route("/api/canaries/:id/advance", post(handlers::advance_canary))
+}
+
+pub fn auth_routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/auth/challenge", get(auth_handlers::get_challenge))
+        .route("/api/auth/verify", post(auth_handlers::verify_challenge))
+}
+
+pub fn protected_routes() -> Router<AppState> {
+    Router::new()
+        .route("/api/contracts", post(handlers::publish_contract))
         .route(
-            "/api/canaries/:id/rollback",
-            post(handlers::rollback_canary),
+            "/api/contracts/:id/verify",
+            post(handlers::verify_contract_by_id),
+        )
+        .route("/api/contracts/verify", post(handlers::verify_contract))
+        .route(
+            "/publishers/:address",
+            patch(handlers::patch_publisher_by_address),
         )
         .route(
-            "/api/canaries/:id/metrics",
-            post(handlers::record_canary_metric),
-        )
-        .route(
-            "/api/canaries/:id/users",
-            post(handlers::assign_canary_users),
+            "/api/publishers/:address",
+            patch(handlers::patch_publisher_by_address),
         )
 }
 
 pub fn ab_test_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/ab-tests", post(handlers::create_ab_test))
-        .route("/api/ab-tests/:id/start", post(handlers::start_ab_test))
-        .route("/api/ab-tests/variant", post(handlers::get_variant))
-        .route(
-            "/api/ab-tests/metrics",
-            post(handlers::record_ab_test_metric),
-        )
-        .route(
-            "/api/ab-tests/:id/results",
-            get(handlers::get_ab_test_results),
-        )
-        .route(
-            "/api/ab-tests/:id/rollout",
-            post(handlers::rollout_winning_variant),
-        )
 }
 
 pub fn performance_routes() -> Router<AppState> {
     Router::new()
+}
+
+pub fn resource_routes() -> Router<AppState> {
+    Router::new()
         .route(
-            "/api/performance/metrics",
-            post(handlers::record_performance_metric),
+            "/api/contracts/:id/resources",
+            get(resource_handlers::get_contract_resources),
         )
         .route(
-            "/api/performance/alerts/config",
-            post(handlers::create_alert_config),
-        )
-        .route(
-            "/api/performance/anomalies/:contract_id",
-            get(handlers::get_performance_anomalies),
-        )
-        .route(
-            "/api/performance/alerts/:id/acknowledge",
-            post(handlers::acknowledge_alert),
+            "/contracts/:id/resources",
+            get(resource_handlers::get_contract_resources),
         )
 }
