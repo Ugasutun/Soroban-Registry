@@ -1,44 +1,31 @@
 use axum::{
-    routing::{get, patch, post, put},
+    routing::{get, post, put},
     Router,
 };
 
 use crate::{handlers, metrics_handler, resource_handlers, state::AppState};
 use crate::{auth_handlers, handlers, metrics_handler, resource_handlers, state::AppState};
 use crate::{compatibility_handlers, handlers, metrics_handler, state::AppState};
+use crate::{handlers, state::AppState};
 
 pub fn observability_routes() -> Router<AppState> {
-    Router::new().route("/metrics", get(metrics_handler::metrics_endpoint))
+    Router::new()
 }
 
 pub fn contract_routes() -> Router<AppState> {
     Router::new()
         .route("/api/contracts", get(handlers::list_contracts))
-        .route("/api/contracts/graph", get(handlers::get_contract_graph))
         .route("/api/contracts", post(handlers::publish_contract))
+        .route("/api/contracts/trending", get(handlers::get_trending_contracts))
+        .route("/api/contracts/graph", get(handlers::get_contract_graph))
         .route("/api/contracts/:id", get(handlers::get_contract))
         .route("/api/contracts/:id/abi", get(handlers::get_contract_abi))
-        .route(
-            "/api/contracts/:id/versions",
-            get(handlers::get_contract_versions),
-        )
-        .route(
-            "/api/contracts/:id/state/:key",
-            get(handlers::get_contract_state).post(handlers::update_contract_state),
-        )
-            "/api/contracts/:id/analytics",
-            get(handlers::get_contract_analytics),
-        )
-		  .route("/api/contracts/:id/trust-score", get(handlers::get_trust_score))
-        .route(
-            "/api/contracts/:id/dependencies",
-            get(handlers::get_contract_dependencies),
-        )
-        .route(
-            "/api/contracts/:id/dependents",
-            get(handlers::get_contract_dependents),
-        )
-        )
+        .route("/api/contracts/:id/versions", get(handlers::get_contract_versions))
+        .route("/api/contracts/:id/state/:key", get(handlers::get_contract_state).post(handlers::update_contract_state))
+        .route("/api/contracts/:id/analytics", get(handlers::get_contract_analytics))
+        .route("/api/contracts/:id/trust-score", get(handlers::get_trust_score))
+        .route("/api/contracts/:id/dependencies", get(handlers::get_contract_dependencies))
+        .route("/api/contracts/:id/dependents", get(handlers::get_contract_dependents))
         .route("/api/contracts/verify", post(handlers::verify_contract))
         .route(
             "/api/contracts/:id/state/:key",
@@ -57,84 +44,20 @@ pub fn contract_routes() -> Router<AppState> {
             "/api/contracts/:id/compatibility/export",
             get(compatibility_handlers::export_contract_compatibility),
         )
+        .route("/api/contracts/:id/deployments/status", get(handlers::get_deployment_status))
+        .route("/api/deployments/green", post(handlers::deploy_green))
 }
 
-/// Publisher-related routes
 pub fn publisher_routes() -> Router<AppState> {
     Router::new()
-        .route("/api/publishers", post(handlers::create_publisher))
-        .route("/api/publishers/:id", get(handlers::get_publisher))
-        .route(
-            "/api/publishers/:id/contracts",
-            get(handlers::get_publisher_contracts),
-        )
 }
 
-/// Health check routes
 pub fn health_routes() -> Router<AppState> {
     Router::new()
         .route("/health", get(handlers::health_check))
         .route("/api/stats", get(handlers::get_stats))
-        .route("/api/cache/stats", get(handlers::get_cache_stats))
 }
 
-/// Migration-related routes
 pub fn migration_routes() -> Router<AppState> {
     Router::new()
-        .route(
-            "/api/migrations",
-            post(handlers::migrations::create_migration).get(handlers::migrations::get_migrations),
-        )
-        .route(
-            "/api/migrations/:id",
-            put(handlers::migrations::update_migration).get(handlers::migrations::get_migration),
-        )
-}
-
-pub fn canary_routes() -> Router<AppState> {
-    Router::new()
-}
-
-pub fn auth_routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/auth/challenge", get(auth_handlers::get_challenge))
-        .route("/api/auth/verify", post(auth_handlers::verify_challenge))
-}
-
-pub fn protected_routes() -> Router<AppState> {
-    Router::new()
-        .route("/api/contracts", post(handlers::publish_contract))
-        .route(
-            "/api/contracts/:id/verify",
-            post(handlers::verify_contract_by_id),
-        )
-        .route("/api/contracts/verify", post(handlers::verify_contract))
-        .route(
-            "/publishers/:address",
-            patch(handlers::patch_publisher_by_address),
-        )
-        .route(
-            "/api/publishers/:address",
-            patch(handlers::patch_publisher_by_address),
-        )
-}
-
-pub fn ab_test_routes() -> Router<AppState> {
-    Router::new()
-}
-
-pub fn performance_routes() -> Router<AppState> {
-    Router::new()
-}
-
-pub fn resource_routes() -> Router<AppState> {
-    Router::new()
-        .route(
-            "/api/contracts/:id/resources",
-            get(resource_handlers::get_contract_resources),
-        )
-        .route(
-            "/contracts/:id/resources",
-            get(resource_handlers::get_contract_resources),
-        )
 }
