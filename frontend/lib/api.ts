@@ -5,6 +5,16 @@ import {
   MOCK_TEMPLATES,
 } from "./mock-data";
 
+export type Network = "mainnet" | "testnet" | "futurenet";
+
+/** Per-network config (Issue #43) */
+export interface NetworkConfig {
+  contract_id: string;
+  is_verified: boolean;
+  min_version?: string;
+  max_version?: string;
+}
+
 export interface Contract {
   id: string;
   contract_id: string;
@@ -12,7 +22,7 @@ export interface Contract {
   name: string;
   description?: string;
   publisher_id: string;
-  network: "mainnet" | "testnet" | "futurenet";
+  network: Network;
   is_verified: boolean;
   category?: string;
   tags: string[];
@@ -21,6 +31,16 @@ export interface Contract {
   created_at: string;
   updated_at: string;
   is_maintenance?: boolean;
+  /** Logical contract grouping (Issue #43) */
+  logical_id?: string;
+  /** Per-network configs: { mainnet: {...}, testnet: {...} } */
+  network_configs?: Record<Network, NetworkConfig>;
+}
+
+/** GET /contracts/:id response when ?network= is used (Issue #43) */
+export interface ContractGetResponse extends Contract {
+  current_network?: Network;
+  network_config?: NetworkConfig;
 }
 
 export interface ContractHealth {
@@ -243,7 +263,16 @@ export const api = {
       queryParams.append("language", language),
     );
     if (params?.author) queryParams.append("author", params.author);
-    if (params?.sort_by) queryParams.append("sort_by", params.sort_by);
+    // Backend expects sort_by without underscores: createdat, updatedat, popularity, deployments, interactions, relevance
+    if (params?.sort_by) {
+      const backendSortBy =
+        params.sort_by === 'created_at' ? 'createdat'
+        : params.sort_by === 'updated_at' ? 'updatedat'
+        : params.sort_by === 'name' ? 'createdat'
+        : params.sort_by === 'downloads' ? 'interactions'
+        : params.sort_by;
+      queryParams.append("sort_by", backendSortBy);
+    }
     if (params?.sort_order) queryParams.append("sort_order", params.sort_order);
     if (params?.page) queryParams.append("page", String(params.page));
     if (params?.page_size)
@@ -251,10 +280,15 @@ export const api = {
 
     const response = await fetch(`${API_URL}/api/contracts?${queryParams}`);
     if (!response.ok) throw new Error("Failed to fetch contracts");
-    return response.json();
+    const data = await response.json();
+    // Backend returns "contracts"; normalize to "items" for PaginatedResponse
+    if (Array.isArray(data.contracts) && data.items === undefined) {
+      return { ...data, items: data.contracts };
+    }
+    return data;
   },
 
-  async getContract(id: string): Promise<Contract> {
+  async getContract(id: string, network?: Network): Promise<ContractGetResponse> {
     if (USE_MOCKS) {
       return new Promise((resolve, reject) => {
         setTimeout(() => {
@@ -262,7 +296,7 @@ export const api = {
             (c) => c.id === id || c.contract_id === id,
           );
           if (contract) {
-            resolve(contract);
+            resolve(contract as ContractGetResponse);
           } else {
             reject(new Error("Contract not found"));
           }
@@ -270,7 +304,9 @@ export const api = {
       });
     }
 
-    const response = await fetch(`${API_URL}/api/contracts/${id}`);
+    const url = new URL(`${API_URL}/api/contracts/${id}`);
+    if (network) url.searchParams.set("network", network);
+    const response = await fetch(url.toString());
     if (!response.ok) throw new Error("Failed to fetch contract");
     return response.json();
   },
@@ -466,7 +502,7 @@ export const api = {
     return `${API_URL}/api/contracts/${id}/compatibility/export?format=${format}`;
   },
 
-  // Graph endpoint
+  // Graph endpoint (backend may return { graph: {} } or { nodes, edges }; normalize to GraphResponse)
   async getContractGraph(network?: string): Promise<GraphResponse> {
     const queryParams = new URLSearchParams();
     if (network) queryParams.append("network", network);
@@ -474,7 +510,12 @@ export const api = {
 
     const response = await fetch(`${API_URL}/api/contracts/graph${qs ? `?${qs}` : ""}`);
     if (!response.ok) throw new Error("Failed to fetch contract graph");
-    return response.json();
+    const data = await response.json();
+    const raw = data?.graph ?? data;
+    return {
+      nodes: Array.isArray(raw?.nodes) ? raw.nodes : [],
+      edges: Array.isArray(raw?.edges) ? raw.edges : [],
+    };
   },
 
   async getTemplates(): Promise<Template[]> {
